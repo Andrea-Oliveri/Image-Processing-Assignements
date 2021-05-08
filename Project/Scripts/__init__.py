@@ -1,3 +1,4 @@
+from .game import *
 from .load import *
 from .utils import *
 from .plots import *
