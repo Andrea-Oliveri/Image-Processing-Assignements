@@ -1,7 +1,26 @@
 # -*- coding: utf-8 -*-
 import cv2
 import numpy as np
-from utils import normalize
+
+
+def normalize(image, nb_bits=1):
+    """
+    Normalize the image on a given number of bits n_bits.
+
+    Args:
+        image::[np.array]
+            Numpy array containing one image of shape (n_lines, n_columns, n_channels).
+        nb_bits::[int]
+            The number of bits by which we want to normalize. By default it normalizes the
+            image to be in the range [0,1].
+    Returns:
+        normalized_image::[np.array]
+            Numpy array containing the normalized version of the image.
+       
+    """
+    min_val = np.min(image)
+    max_val = np.max(image)
+    return (2**nb_bits-1)*(image-min_val)/(max_val-min_val)
 
 
 def generate_gaussian2D(image_shape, sigma_x, sigma_y, mu_x, mu_y):
