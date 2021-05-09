@@ -25,7 +25,7 @@ def fully_convolutional_network(input_shape = (None, None, 1), show_summary = Tr
                          MaxPool2D(pool_size = 2),
                          Conv2D(filters = 128, kernel_size = 7, padding = 'valid', kernel_initializer = 'he_uniform', activation = 'relu'),
                          SpatialDropout2D(rate = 0.5),
-                         Conv2D(filters = 10 , kernel_size = 1, padding = 'valid', activation = 'softmax') ])
+                         Conv2D(filters = 13 , kernel_size = 1, padding = 'valid', activation = 'softmax') ])
     
     if show_summary:
         model.summary()
