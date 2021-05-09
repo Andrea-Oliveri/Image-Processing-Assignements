@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import warnings
 import numpy as np
-import tensorflow 
+import tensorflow
+from .distortions import *
 
 
 class DataGenerator(tensorflow.keras.utils.Sequence):
@@ -64,6 +65,8 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
             mnist_image = self.mnist_images[index_mnist]
             mnist_label = self.mnist_labels[index_mnist]
                         
+            mnist_image = zoom_image_to_meet_shape(mnist_image, self.resolution)
+
             X[i, :] = self.random_data_augmentation(mnist_image) if self.augment_mnist_data else mnist_image
             y[i, mnist_label] = 1
             
@@ -73,13 +76,12 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
         assert i % 10 == 0 and self.batch_size > i, f"Problem: index i not correct: got {i}, not % 10 and not larger than batch size"
 
         assert (self.batch_size - i) // 3 == (self.batch_size - i) / 3 == self.n_exemples_each_class_per_batch, f"Problem with // vs /: {(self.batch_size - i) // 3} vs {(self.batch_size - i) / 3}"
-        
-        import cv2
-        
+                
         # Add figures to batch, applying data augmentatin on them if necessary.
         for _ in range(self.n_exemples_each_class_per_batch):
             for figure_image, figure_label in zip(self.figures_images, self.figures_labels):
-                X[i, :] = cv2.resize(self.random_data_augmentation(figure_image) if self.augment_figure_data else figure_image, self.resolution)
+                figure_image = zoom_image_to_meet_shape(figure_image, self.resolution)
+                X[i, :] = self.random_data_augmentation(figure_image) if self.augment_figure_data else figure_image
                 y[i, figure_label] = 1
                 
                 i += 1
@@ -93,7 +95,9 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
         assert np.all(np.sum(y, axis = 0) == np.sum(y, axis = 0)[0]), f"Problem: got one different number of classes per batch"
 
         
-        return np.expand_dims(X / 255, axis = -1), y
+        X = X / 255.
+        
+        return np.expand_dims(X, axis = -1), y
     
     
     def on_epoch_end(self):
@@ -120,18 +124,26 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
         assert len(counts) == 10 and min(counts) == max(counts), "Error on epoch end"
         
         
-    def harvest(self):
-        temp_batch_size = self.batch_size
-        self.batch_size = len(self.index_measures)
-        X, y = self[0]
-        self.batch_size = temp_batch_size
-        return X, y       
+    def random_data_augmentation(self, image):
+        """Randomly performs a data augmentation on the data passed as parameter and returns the new data."""
         
+        new_image = normalize(image)
         
-    def random_data_augmentation(self, x):
-        """Randomly performs a data augmentation on the data passed as parameter and returns the new data. For now, the only
-        data augmentation which is known should not impact the label is flipping the measure over the snapshot axis (measurement
-        time axis) as an activity which is performed in one direction and in the opposite direction should still be the same action
-        (for the activities considered in this dataset)."""
+        new_image = apply_random_distortion_from_range(add_gaussian_noise, image, 
+                                                       {"mean": (0, 0), "sigma": (0, 0.3)})
         
-        return x
+        new_image = apply_random_distortion_from_range(gaussian_blur, new_image,
+                                                       {"sigma_horizontal": (1e-6, 1e-1), "sigma_vertical": (1e-6, 1e-1)})
+        
+        new_image = apply_random_distortion_from_range(zoom_image, new_image,
+                                                       {"zoom_factor": (0.6, 1)})
+        
+        new_image = apply_random_distortion_from_range(rotation, new_image, 
+                                                       {"deg": (-40, 40)})
+        
+        new_image = apply_random_distortion_from_range(translate, new_image, 
+                                                       {"dx": (-5, 5), "dy": (-5, 5)})
+
+        new_image = binarize(new_image)
+        
+        return new_image

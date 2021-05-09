@@ -3,6 +3,31 @@ import cv2
 import numpy as np
 
 
+def apply_random_distortion_from_range(function, image, params_ranges={}):
+    """
+    Apply a distortion to the image by the use of function that takes as parameter a randomly chosen value in a given range.
+    
+    Args:
+        function::[function]
+            The function to distort the image.
+        image::[np.array]
+            Numpy array containing one image of shape (n_lines, n_columns, n_channels).
+        params_ranges::[dict]
+            The range of parameters to give to function between which we will choose a random value
+    Returns:
+        distorted_image::[np.array]
+            Numpy array containing the distorted image of shape (n_lines, n_columns, n_channels).
+    
+    """
+    random_params = {}
+    for param, val_range in params_ranges.items():
+        random_params[param] = np.random.uniform(*val_range)
+
+    distorted_image = function(image, **random_params)
+    
+    return distorted_image
+
+
 def normalize(image, nb_bits=1):
     """
     Normalize the image on a given number of bits n_bits.
@@ -23,77 +48,20 @@ def normalize(image, nb_bits=1):
     return (2**nb_bits-1)*(image-min_val)/(max_val-min_val)
 
 
-def generate_gaussian2D(image_shape, sigma_x, sigma_y, mu_x, mu_y):
-    """
-    Function returning an image of shape image_shape containing a 2D gaussian of unitary amplitude and standard deviations 
-    and center passed as parameters.
-    
-    Args:
-        image_shape::[tuple]
-            Tuple describing the desired shape of the output image in the form (n_lines, n_columns, n_channels).
-        sigma_x::[float]
-            The horizontal standard deviation of the 2D gaussian.
-        sigma_y::[float]
-            The vertical standard deviation of the 2D gaussian.
-        mu_x::[float]
-            The horizontal centering of the 2D gaussian.
-        mu_y::[float]
-            The vertical centering of the 2D gaussian.
-    Returns:
-        gaussian::[np.array]
-            Numpy array of shape (n_lines, n_columns, n_channels) containing the desired 2D gaussian.
-    
-    """
-    pixels_range = range(-image_shape[0]//2, image_shape[1]//2)
-    x, y = np.meshgrid(pixels_range, pixels_range)
-    gaussian_x = np.exp(- (x - mu_x)**2 / (2 * sigma_x**2))
-    gaussian_y = np.exp(- (y - mu_y)**2 / (2 * sigma_y**2))
-    gaussian = gaussian_x * gaussian_y
-    
-    return gaussian.reshape(image_shape)
-
-
-def add_gaussian(image, amplitude, sigma_x=None, sigma_y=None, mu_x=None, mu_y=None, nb_bits=8):
-    """
-    Function distorting the image by adding a 2D gaussian with amplitude, standard deviations and centering passed as parameter.
-    The obtained image is then normalised for it to be in the range [0, 2**nb_bits-1].
-    
-    Args:
-        image::[np.array]
-            Numpy array containing one image of shape (n_lines, n_columns, n_channels).
-        amplitude::[np.array]
-            The amplitude of the gaussian we want to add to the image (before normalization of distorted image).
-        sigma_x::[float]
-            The horizontal standard deviation of the 2D gaussian. If None, it is computed as one fifth of horizontal image shape.
-        sigma_y::[float]
-            The vertical standard deviation of the 2D gaussian. If None, it is computed as one fifth of vertical image shape.
-        mu_x::[float]
-            The horizontal centering of the 2D gaussian. If None, it is chosen at random within the image shape.
-        mu_y::[float]
-            The vertical centering of the 2D gaussian. If None, it is chosen at random within the image shape.
-        nb_bits::[int]
-            Normalization range of output image: [0, 2**nb_bits-1].
-    Returns:
-        new_image::[np.array]
-            Numpy array of same shape as image containing the image distorted by addition of desired 2D gaussian.
-    
-    """
-    if sigma_x is None:
-        sigma_x = (image.shape[0])/5
-    if sigma_y is None:
-        sigma_y = (image.shape[1])/5
-    if mu_x is None:
-        mu_x = np.random.randint(-image.shape[0] // 2, image.shape[0] // 2)
-    if mu_y is None:
-        mu_y = np.random.randint(-image.shape[1] // 2, image.shape[1] // 2)
+def binarize(image, thr = None):
+    if thr is None:
+        thr = image.max() / 2
         
-    gaussian = generate_gaussian2D(image.shape, sigma_x, sigma_y, mu_x, mu_y)
-    new_image = gaussian * amplitude + image
-    
-    return normalize(new_image, nb_bits)
+    return (image > thr).astype(np.uint8)
 
 
-def add_gaussian_noise(image, mean, sigma, nb_bits=8):
+def gaussian_blur(image, sigma_horizontal, sigma_vertical = 0.):
+    # If sigma_vertical = 0, opencv puts it equal to sigma_horizontal
+    return cv2.GaussianBlur(image, ksize = (0, 0), sigmaX = sigma_horizontal, sigmaY = sigma_vertical)
+
+
+
+def add_gaussian_noise(image, mean, sigma, nb_bits = 1):
     """
     Function distorting the image by adding gaussian noise of desired mean and standard deviation.
     The obtained image is then normalised for it to be in the range [0, 2**nb_bits-1].
@@ -117,10 +85,67 @@ def add_gaussian_noise(image, mean, sigma, nb_bits=8):
     return new_image
 
 
-def zoom_image(image, zoom_factor, val_padding=None):
+def rotation(image, deg, border_value = None):
+    """
+    Function returning image rotated by deg degrees counter-clockwise around its center.
+    
+    Args:
+        image::[np.array]
+            Image we wish to rotate.
+        deg::[float]
+            Rotation angle in degrees. Positive values mean counter-clockwise rotation.
+        border_value::[float]
+            The value to use to pad the borders of the new image which do not correspond to points in the original image.
+            If None, it is computed as the min value found in image.
+    Returns:
+        result::[np.array]
+            Image rotated by deg degrees counter-clockwise around its center.
+    """
+    if border_value is None:
+        border_value = image.min()
+        
+    max_value = image.max()
+        
+    rows, cols = image.shape
+    matrix = cv2.getRotationMatrix2D((cols/2, rows/2), deg, 1)
+    result = cv2.warpAffine(image, matrix, (cols, rows), flags = cv2.INTER_CUBIC, borderValue = border_value)
+
+    return np.clip(result, a_min = 0, a_max = max_value)
+
+
+def translate(image, dx, dy, border_value = None):
+    """
+    Function returning image translated by dx pixels horizontally and dy pixels vertically.
+    
+    Args:
+        image::[np.array]
+            Image we wish to translate.
+        dx::[int]
+            Number of pixels we want to translate image horizontally. Positive values mean translation to the right.
+        dy::[int]
+            Number of pixels we want to translate image vertically. Positive values mean translation downwards.
+        border_value::[float]
+            The value to use to pad the borders of the new image which do not correspond to points in the original image.
+            If None, it is computed as the min value found in image.
+    Returns:
+        result::[np.array]
+            Image translated by dx pixels horizontally and dy pixels vertically.
+    """
+    if border_value is None:
+        border_value = image.min()
+        
+    rows, cols = image.shape
+    matrix = np.float32([[1, 0, dx], [0, 1, dy]])
+    result = cv2.warpAffine(image, matrix, (cols, rows), borderValue = border_value)
+    
+    return result
+
+
+def zoom_image(image, zoom_factor, val_padding = None):
     """
     Function distorting the image by zooming it in towards its center if zoom_factor > 1 or by zooming it out and padding
-    with val_padding to keep same shape if 0 < zoom_factor < 1. Cubic interpolation is used to preserve quality. 
+    with val_padding to keep same shape if 0 < zoom_factor < 1. Cubic interpolation is used to preserve quality when 
+    zoom_factor > 1 and Area interpolation is used when zoom_factor < 1. 
     
     Args:
         image::[np.array]
@@ -145,14 +170,13 @@ def zoom_image(image, zoom_factor, val_padding=None):
     elif zoom_factor == 1:
         output = image
         
-    else:
-        # Resize
-        new_image = cv2.resize(image, None, fx=zoom_factor, fy=zoom_factor, interpolation=cv2.INTER_CUBIC)
-        
-        height, width, _      = image.shape
-        new_height, new_width = new_image.shape
-    
+    else:    
         if zoom_factor > 1:
+            new_image = cv2.resize(image, None, fx=zoom_factor, fy=zoom_factor, interpolation=cv2.INTER_CUBIC)
+        
+            height, width         = image.shape
+            new_height, new_width = new_image.shape
+            
             # Crop central portion of correct size
             line_start = (new_height - height) // 2
             col_start  = (new_width - width) // 2
@@ -161,7 +185,12 @@ def zoom_image(image, zoom_factor, val_padding=None):
 
             output = new_image[line_start:line_end, col_start:col_end]
 
-        elif zoom_factor < 1:  
+        elif zoom_factor < 1:
+            new_image = cv2.resize(image, None, fx=zoom_factor, fy=zoom_factor, interpolation=cv2.INTER_AREA)
+        
+            height, width         = image.shape
+            new_height, new_width = new_image.shape
+        
             if val_padding is None:
                 val_padding = image.min()
 
@@ -192,4 +221,6 @@ def zoom_image_to_meet_shape(image, shape):
             Numpy array of desired shape containing the image given as input resized via cubic interpolation.
     
     """
-    return cv2.resize(image, (shape[0], shape[1]), interpolation=cv2.INTER_CUBIC).reshape(shape)
+    interpolation = cv2.INTER_CUBIC if image.shape[0] < shape[0] else cv2.INTER_AREA
+    
+    return cv2.resize(image, (shape[0], shape[1]), interpolation = interpolation).reshape(shape)
