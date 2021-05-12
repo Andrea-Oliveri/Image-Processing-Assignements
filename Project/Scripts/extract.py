@@ -1,109 +1,130 @@
-from collections import defaultdict
-from scipy.misc import imread
-from skimage.filter import canny
-from scipy.ndimage.filters import sobel
+import cv2
+import numpy as np
+from scipy.ndimage import gaussian_filter
 
-
-# Methods to extract card and coin for classification 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# GENERAL HOUGH 
-
-'''
-Created on May 19, 2013
-
-@author: vinnie
-'''
-
-# Good for the b/w test images used
-MIN_CANNY_THRESHOLD = 10
-MAX_CANNY_THRESHOLD = 50
-
-def gradient_orientation(image):
-	'''
-	Calculate the gradient orientation for edge point in the image
-	'''
-	dx = sobel(image, axis=0, mode='constant')
-	dy = sobel(image, axis=1, mode='constant')
-	gradient = np.arctan2(dy,dx) * 180 / np.pi
+# Method to extract card and coin for classification 
+def get_color_pixels(image, color):
+	image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 	
-	return gradient
-	
-def build_r_table(image, origin):
-	'''
-	Build the R-table from the given shape image and a reference point
-	'''
-	edges = canny(image, low_threshold=MIN_CANNY_THRESHOLD, 
-				  high_threshold=MAX_CANNY_THRESHOLD)
-	gradient = gradient_orientation(edges)
-	
-	r_table = defaultdict(list)
-	for (i,j),value in np.ndenumerate(edges):
-		if value:
-			r_table[gradient[i,j]].append((origin[0]-i, origin[1]-j))
+	if color == "black":
+		return cv2.inRange(image_hsv, (0, 0, 0), (180, 255, 30))
 
-	return r_table
-
-def accumulate_gradients(r_table, grayImage):
-	'''
-	Perform a General Hough Transform with the given image and R-table
-	'''
-	edges = canny(grayImage, low_threshold=MIN_CANNY_THRESHOLD, 
-				  high_threshold=MAX_CANNY_THRESHOLD)
-	gradient = gradient_orientation(edges)
-	
-	accumulator = np.zeros(grayImage.shape)
-	for (i,j),value in np.ndenumerate(edges):
-		if value:
-			for r in r_table[gradient[i,j]]:
-				accum_i, accum_j = i+r[0], j+r[1]
-				if accum_i < accumulator.shape[0] and accum_j < accumulator.shape[1]:
-					accumulator[accum_i, accum_j] += 1
-					
-	return accumulator
-
-def general_hough_closure(reference_image):
-	'''
-	Generator function to create a closure with the reference image and origin
-	at the center of the reference image
-	
-	Returns a function f, which takes a query image and returns the accumulator
-	'''
-	referencePoint = (reference_image.shape[0]/2, reference_image.shape[1]/2)
-	r_table = build_r_table(reference_image, referencePoint)
-	
-	def f(query_image):
-		return accumulate_gradients(r_table, query_image)
+	elif color == "green":
+		return cv2.inRange(image_hsv, (40, 50, 30), (75, 255, 255))
 		
-	return f
+	elif color == "red":
+		mask1 = cv2.inRange(image_hsv, (0, 70, 50), (10, 255, 255))
+		mask2 = cv2.inRange(image_hsv, (170, 70, 50), (180, 255, 255))
+		return cv2.bitwise_or(mask1, mask2)
+	
+	else:
+		raise ValueError(f"Color parameter must be one of 'black', 'green', 'red'. Got: {color}")
 
-def n_max(a, n):
-	'''
-	Return the N max elements and indices in a
-	'''
-	indices = a.ravel().argsort()[-n:]
-	indices = (np.unravel_index(i, a.shape) for i in indices)
-	return [(a[i], i) for i in indices]
+def red_color_isolation(img) : 
+	output = img.copy()
+	red_filtered = (output[:,:,0] > 150) & (output[:,:,1] < 100) & (output[:,:,2] < 110)
+	output[:, :, 0] = output[:, :, 0] * red_filtered
+	output[:, :, 1] = output[:, :, 1] * red_filtered
+	output[:, :, 2] = output[:, :, 2] * red_filtered
+	output = cv2.cvtColor(output, cv2.COLOR_BGR2HSV)
+	# plt.imshow(output[:,:,0])
+	return output[:,:,0]
+
+def green_color_isolation(img) : 
+	output = img.copy()
+	output = get_color_pixels(output,"green")
+	return output
+
+def black_color_isolation(img) : 
+	output = img.copy()
+	output = get_color_pixels(output,"black")
+	return output
 
 
-# # top 5 results in red
-# m = n_max(accumulator, 5)
-# y_points = [pt[1][0] for pt in m]
-# x_points = [pt[1][1] for pt in m] 
-# plt.scatter(x_points, y_points, marker='o', color='r')
+def get_rectanglecoords(img):
+	# binary_img simply get (from connected components image but masked by label)
+	activ_coord = np.where(img)
+	ymin,ymax = np.min(activ_coord[0]), np.max(activ_coord[0])
+	xmin,xmax = np.min(activ_coord[1]), np.max(activ_coord[1])
+	
+	return xmin,xmax,ymin,ymax
 
 
-def reconstruct():
-	pass
+# Main Func
+def extract(img):
+	# take as input a bgr image 
+
+	# get contour images through two ways 
+	print('Contour Expressing...')
+
+	# 1.Gradient Image 
+	gradient_img = cv2.Canny(img,25,100)
+	
+	# 2.hsv Image 
+	output_red = red_color_isolation(img)
+	output_green = green_color_isolation(img)
+	output_black = black_color_isolation(img)
+	output = output_red + output_green + output_black
+
+
+	# 3.Extract Circle
+	print('Extracting Circle Dealer...')
+	min_votes = 5000
+
+	# output -> contour made very obvious by color extract
+	circles = cv2.HoughCircles(output,cv2.HOUGH_GRADIENT,1,min_votes,
+							param1=50,param2=30)
+
+	circles = np.uint16(np.around(circles))
+
+	# take one and only circle, since we put a high minimum vote
+	x,y,r = circles[0][0]
+	cropped_circ = img[y-r:y+r,x-r:x+r]
+
+	# 4. Extract Cards
+	print('Extracting Cards...')
+	no_circ = cv2.circle(gradient_img, (x,y), int(r*1.1), (0,0,0), -1)
+	contours, _ = cv2.findContours(gaussian_filter(no_circ,sigma=5), 
+		cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+	array_contour = [contour.reshape(np.array(contour.shape)[[0,2]]) for contour in contours]
+	# take top 25% contours (top in terms of size of array)
+	top_four = np.asarray([(i,array_contour[i].shape[0]) for i in range(len(array_contour))])
+	top_four = np.array(sorted(top_four,key=lambda x:x[1],reverse=True))
+	top_four = top_four[:len(top_four)//4,0] #we take half of the largest
+
+	# got top four contours  
+	four_contour = np.array(array_contour)[list(top_four)]
+
+	blank = np.zeros_like(no_circ)
+
+	# sequential filling, since it's possible that two contours express the same rectangle and therefore
+	# for some reason it does not fill inside
+	for one_contour in four_contour:
+		cv2.drawContours(blank, [one_contour], -1, (255,255,255), thickness=cv2.FILLED)
+	
+
+	# 4 represents minimum number of pixels for a component to be kept
+	num_labels, labels_im, stats, centroids = cv2.connectedComponentsWithStats(blank, 4)
+
+	# keep 4 largest components (excluding background) supposedly represents the cards
+	_, r1, r2, r3, r4 = np.array(sorted([(idx,val) for idx,val 
+							in enumerate(stats[:,-1])],
+							key=lambda x:x[1],reverse=True))[:,0][:5]
+
+	card1 = (labels_im == r1)
+	card2 = (labels_im == r2)
+	card3 = (labels_im == r3)
+	card4 = (labels_im == r4)
+
+	xmin1, xmax1, ymin1, ymax1 = get_rectanglecoords(card1)
+	xmin2, xmax2, ymin2, ymax2 = get_rectanglecoords(card2)
+	xmin3, xmax3, ymin3, ymax3 = get_rectanglecoords(card3)
+	xmin4, xmax4, ymin4, ymax4 = get_rectanglecoords(card4)
+
+
+	return (cropped_circ,
+			img[ymin1:ymax1,xmin1:xmax1], 
+			img[ymin2:ymax2,xmin2:xmax2], 
+			img[ymin3:ymax3,xmin3:xmax3],
+			img[ymin4:ymax4,xmin4:xmax4])
