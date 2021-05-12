@@ -35,8 +35,9 @@ class Dataset():
 			if not(g in os.listdir(self.root)): raise IndexError("file does not exist")
 
 			path = self.root+'/'+g
-			img = np.asarray([cv2.imread(path+'/'+rd) for rd in os.listdir(path) if rd.endswith('.jpg')])
 			label = self.labels.loc[self.labels['game']==g.strip('/')]
+			img = np.asarray([cv2.imread(path+'/'+str(rd)+'.jpg') for rd in label['round']])
+			
 		else:
 			#consider two args
 			g,rd = spec
