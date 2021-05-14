@@ -121,10 +121,15 @@ def extract(img):
 	xmin2, xmax2, ymin2, ymax2 = get_rectanglecoords(card2)
 	xmin3, xmax3, ymin3, ymax3 = get_rectanglecoords(card3)
 	xmin4, xmax4, ymin4, ymax4 = get_rectanglecoords(card4)
-
+	
+	imgs = [img[ymin1:ymax1,xmin1:xmax1],
+			img[ymin2:ymax2,xmin2:xmax2],
+			img[ymin3:ymax3,xmin3:xmax3],
+			img[ymin4:ymax4,xmin4:xmax4]]
 
 	return (cropped_circ,
-			img[ymin1:ymax1,xmin1:xmax1], 
-			img[ymin2:ymax2,xmin2:xmax2], 
-			img[ymin3:ymax3,xmin3:xmax3],
-			img[ymin4:ymax4,xmin4:xmax4])
+			imgs[np.argmax([ymax1, ymax2, ymax3, ymax4])],
+			imgs[np.argmax([xmax1, xmax2, xmax3, xmax4])],
+			imgs[np.argmin([ymin1, ymin2, ymin3, ymin4])],
+			imgs[np.argmin([xmin1, xmin2, xmin3, xmin4])],
+			)
