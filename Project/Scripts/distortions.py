@@ -28,7 +28,7 @@ def apply_random_distortion_from_range(function, image, params_ranges={}):
     return distorted_image
 
 
-def normalize(image, nb_bits=1):
+def normalize(image, nb_bits = 1):
     """
     Normalize the image on a given number of bits n_bits.
 
@@ -50,7 +50,10 @@ def normalize(image, nb_bits=1):
 
 def binarize(image, thr = None):
     if thr is None:
-        thr = image.max() / 2
+        min_val = np.min(image)
+        max_val = np.max(image)
+        
+        thr = (min_val + max_val) / 2
         
     return (image > thr).astype(np.uint8)
 

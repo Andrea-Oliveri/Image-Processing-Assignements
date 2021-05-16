@@ -1,4 +1,4 @@
-from .load import *
+from .data_loader import *
 from .utils import *
 from .plots import *
 from .model import *

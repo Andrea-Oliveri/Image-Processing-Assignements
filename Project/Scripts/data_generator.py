@@ -64,38 +64,19 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
         for index_mnist in index_mnist_batches:
             mnist_image = self.mnist_images[index_mnist]
             mnist_label = self.mnist_labels[index_mnist]
-                        
-            mnist_image = zoom_image_to_meet_shape(mnist_image, self.resolution)
-
-            X[i, :] = self.random_data_augmentation(mnist_image) if self.augment_mnist_data else mnist_image
+            
+            X[i, :] = self.pretreat_image(mnist_image, self.augment_mnist_data)
             y[i, mnist_label] = 1
             
             i += 1
-        
-        
-        assert i % 10 == 0 and self.batch_size > i, f"Problem: index i not correct: got {i}, not % 10 and not larger than batch size"
-
-        assert (self.batch_size - i) // 3 == (self.batch_size - i) / 3 == self.n_exemples_each_class_per_batch, f"Problem with // vs /: {(self.batch_size - i) // 3} vs {(self.batch_size - i) / 3}"
-                
+              
         # Add figures to batch, applying data augmentatin on them if necessary.
         for _ in range(self.n_exemples_each_class_per_batch):
             for figure_image, figure_label in zip(self.figures_images, self.figures_labels):
-                figure_image = zoom_image_to_meet_shape(figure_image, self.resolution)
-                X[i, :] = self.random_data_augmentation(figure_image) if self.augment_figure_data else figure_image
+                X[i, :] = self.pretreat_image(figure_image, self.augment_figure_data)
                 y[i, figure_label] = 1
-                
+        
                 i += 1
-
-        
-        
-        
-        
-        assert i == self.batch_size, f"Problem: index i not correct: {self.batch_size} expected, got {i}"
-        assert np.all(np.sum(y, axis = 1) == 1), f"Problem: got one line with multiple 1"
-        assert np.all(np.sum(y, axis = 0) == np.sum(y, axis = 0)[0]), f"Problem: got one different number of classes per batch"
-
-        
-        X = X / 255.
         
         return np.expand_dims(X, axis = -1), y
     
@@ -117,33 +98,38 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
         self.random_index_mnist = np.transpose(idx_class_mnist).flatten()
         
         
+    def pretreat_image(self, image, random_augmentation):
+        new_image = image
+                        
+        new_image = zoom_image_to_meet_shape(new_image, self.resolution)
+
+        new_image = normalize(new_image)
         
-        
-        test = self.mnist_labels[self.random_index_mnist]
-        _, counts = np.unique(test, return_counts = True)
-        assert len(counts) == 10 and min(counts) == max(counts), "Error on epoch end"
-        
+        new_image = self.random_data_augmentation(new_image) if random_augmentation else new_image
+
+        new_image = binarize(new_image)
+
+        return new_image
+
+
         
     def random_data_augmentation(self, image):
         """Randomly performs a data augmentation on the data passed as parameter and returns the new data."""
+        new_image = image
         
-        new_image = normalize(image)
+        #new_image = apply_random_distortion_from_range(add_gaussian_noise, new_image, 
+        #                                               {"mean": (0, 0), "sigma": (0, 0.3)})
         
-        new_image = apply_random_distortion_from_range(add_gaussian_noise, image, 
-                                                       {"mean": (0, 0), "sigma": (0, 0.3)})
-        
-        new_image = apply_random_distortion_from_range(gaussian_blur, new_image,
-                                                       {"sigma_horizontal": (1e-6, 1e-1), "sigma_vertical": (1e-6, 1e-1)})
+        #new_image = apply_random_distortion_from_range(gaussian_blur, new_image,
+        #                                               {"sigma_horizontal": (1e-6, 1e-1), "sigma_vertical": (1e-6, 1e-1)})
         
         new_image = apply_random_distortion_from_range(zoom_image, new_image,
-                                                       {"zoom_factor": (0.6, 1)})
+                                                       {"zoom_factor": (0.8, 1)})
         
         new_image = apply_random_distortion_from_range(rotation, new_image, 
-                                                       {"deg": (-40, 40)})
+                                                       {"deg": (-30, 30)})
         
         new_image = apply_random_distortion_from_range(translate, new_image, 
-                                                       {"dx": (-5, 5), "dy": (-5, 5)})
-
-        new_image = binarize(new_image)
+                                                       {"dx": (-4, 4), "dy": (-4, 4)})
         
         return new_image
