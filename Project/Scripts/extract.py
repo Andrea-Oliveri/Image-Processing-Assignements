@@ -1,45 +1,39 @@
 import cv2
 import numpy as np
-from scipy.ndimage import gaussian_filter
+import matplotlib.pyplot as plt
+from scipy.spatial.distance import cdist
 
-# Method to extract card and coin for classification 
+
+################################################## UTILs ##############################################################
+
 def get_color_pixels(image, color):
-	image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-	
-	if color == "black":
-		return cv2.inRange(image_hsv, (0, 0, 0), (180, 255, 30))
+    image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    
+    if color == "black":
+        return cv2.inRange(image_hsv, (0, 0, 0), (180, 255, 30))
 
-	elif color == "green":
-		return cv2.inRange(image_hsv, (40, 50, 30), (75, 255, 255))
-		
-	elif color == "red":
-		mask1 = cv2.inRange(image_hsv, (0, 70, 50), (10, 255, 255))
-		mask2 = cv2.inRange(image_hsv, (170, 70, 50), (180, 255, 255))
-		return cv2.bitwise_or(mask1, mask2)
-	
-	else:
-		raise ValueError(f"Color parameter must be one of 'black', 'green', 'red'. Got: {color}")
+    elif color == "green":
+        return cv2.inRange(image_hsv, (40, 50, 30), (75, 255, 255))
+        
+    elif color == "red":
+        mask1 = cv2.inRange(image_hsv, (0, 70, 50), (10, 255, 255))
+        mask2 = cv2.inRange(image_hsv, (170, 70, 50), (180, 255, 255))
+        return cv2.bitwise_or(mask1, mask2)
+    
+    else:
+        raise ValueError(f"Color parameter must be one of 'black', 'green', 'red'. Got: {color}")
 
-def red_color_isolation(img) : 
-	output = img.copy()
-	red_filtered = (output[:,:,0] > 150) & (output[:,:,1] < 100) & (output[:,:,2] < 110)
-	output[:, :, 0] = output[:, :, 0] * red_filtered
-	output[:, :, 1] = output[:, :, 1] * red_filtered
-	output[:, :, 2] = output[:, :, 2] * red_filtered
-	output = cv2.cvtColor(output, cv2.COLOR_BGR2HSV)
-	# plt.imshow(output[:,:,0])
-	return output[:,:,0]
-
-def green_color_isolation(img) : 
-	output = img.copy()
-	output = get_color_pixels(output,"green")
-	return output
-
-def black_color_isolation(img) : 
-	output = img.copy()
-	output = get_color_pixels(output,"black")
-	return output
-
+def associate_point_to_player(image_shape, point):
+    image_rows, image_columns = image_shape
+    point_row , point_column  = point
+    
+    player_points = [(image_rows, image_columns / 2), (image_rows / 2, image_columns), (0, image_columns / 2), (image_rows / 2, 0)]
+    
+    distances = cdist(player_points, [point])
+    
+    player = np.argmin(distances) + 1
+    
+    return player
 
 def get_rectanglecoords(img):
 	# binary_img simply get (from connected components image but masked by label)
@@ -49,87 +43,128 @@ def get_rectanglecoords(img):
 	
 	return xmin,xmax,ymin,ymax
 
+################################################## MAIN-CLASS ##############################################################
 
-# Main Func
-def extract(img):
-	# take as input a bgr image 
+class Extractor():
+    
+    def __init__(self, canny_thresholds = (25, 100), hough_circles_parameters = (50, 30), sigma_gaussian_blur = 5,
+                 smaller_card_side_range = (400, 700), larger_card_size_range = (600, 900), nms_threshold = 0.3):
+        self.canny_thresholds = canny_thresholds
+        self.hough_circles_parameters = hough_circles_parameters
+        self.sigma_gaussian_blur = sigma_gaussian_blur
+        
+        self.smaller_card_side_range = (min(smaller_card_side_range), max(smaller_card_side_range))
+        self.larger_card_size_range  = (min(larger_card_size_range ), max(larger_card_size_range ))
+        
+        self.nms_threshold = nms_threshold
+        
+        
+        
+    def _extract(self, image):
+        dealer_circle, dealer_player = self._extract_dealer(image)
+        
+        cards = self._extract_cards(image, dealer_circle)
+        
+        return dealer_player, cards
+        
+        
+        
+    def _extract_dealer(self, image):
+        green_mask  = get_color_pixels(image, "green")
 
-	# get contour images through two ways 
-	print('Contour Expressing...')
+        # Extract circle.
+        circles = cv2.HoughCircles(green_mask, cv2.HOUGH_GRADIENT, dp = 1,
+                                   minDist = np.inf, 
+                                   param1  = self.hough_circles_parameters[0], 
+                                   param2  = self.hough_circles_parameters[1])
 
-	# 1.Gradient Image 
-	gradient_img = cv2.Canny(img,25,100)
-	
-	# 2.hsv Image 
-	output_red = red_color_isolation(img)
-	output_green = green_color_isolation(img)
-	output_black = black_color_isolation(img)
-	output = output_red + output_green + output_black
+        circles = np.uint16(np.around(circles))
 
+        # Take the only circle detected, as we put a high minimum distance.
+        column, row, radius = circles[0][0]
+        
+        # Show detection.
+        #plt.imshow(image[row-radius:row+radius,column-radius:column+radius][:,:,::-1])
+        #plt.show()
+        
+        # Determine which player is dealer.
+        dealer_player = self._associate_point_to_player(image, (row, column))
+        
+        return (column, row, radius), dealer_player
+        
+    
+    def _extract_cards(self, image, dealer_circle):
+        column, row, radius = dealer_circle
+        
+        gradient = cv2.Canny(image, *self.canny_thresholds) 
 
-	# 3.Extract Circle
-	print('Extracting Circle Dealer...')
-	min_votes = 5000
+        gradient_no_circle         = cv2.circle(gradient, (column, row), int(radius * 1.1), (0, 0, 0), cv2.FILLED)
+        gradient_no_circle_blurred = cv2.GaussianBlur(gradient_no_circle, None, sigmaX = self.sigma_gaussian_blur)
+        
+        # Here as we don't use hierarcy returned parameter we don't need RETR_TREE and we can use RETR_LIST
+        contours, _ = cv2.findContours(gradient_no_circle_blurred, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
+        bounding_boxes = []
+        for contour in contours:
+            bbox = cv2.boundingRect(contour)
+            if self._bbox_can_be_card(bbox):
+                bounding_boxes.append(bbox)
+        
+        indices = cv2.dnn.NMSBoxes(bounding_boxes, [w*h for _, _, w, h in bounding_boxes], 0, self.nms_threshold)
+        bounding_boxes = [bbox for idx, bbox in enumerate(bounding_boxes) if idx in indices]
+        
 
-	# output -> contour made very obvious by color extract
-	circles = cv2.HoughCircles(output,cv2.HOUGH_GRADIENT,1,min_votes,
-							param1=50,param2=30)
+        cards = {}
+        for bbox in bounding_boxes:
+            player = self._associate_bbox_to_player(image, bbox)
+            column, row, width, height = bbox
+            card_image = image[row:row+height, column:column+width]
+            card_image = np.rot90(card_image, 1-player)
+            
+            cards[player] = card_image
+        
+        return cards
+        
+    
+    
+    def _bbox_can_be_card(self, bbox):
+        _, _, width, height = bbox
+        
+        # width_height_list.append(width)
+        # width_height_list.append(height)
 
-	circles = np.uint16(np.around(circles))
+        width_in_smaller_range = self.smaller_card_side_range[0] <= width <= self.smaller_card_side_range[1]
+        width_in_larger_range  = self.larger_card_size_range [0] <= width <= self.larger_card_size_range [1]
 
-	# take one and only circle, since we put a high minimum vote
-	x,y,r = circles[0][0]
-	cropped_circ = img[y-r:y+r,x-r:x+r]
+        height_in_smaller_range = self.smaller_card_side_range[0] <= height <= self.smaller_card_side_range[1]
+        height_in_larger_range  = self.larger_card_size_range [0] <= height <= self.larger_card_size_range [1]
+        
+        return (width_in_smaller_range and height_in_larger_range) or (width_in_larger_range and height_in_smaller_range)
+    
 
-	# 4. Extract Cards
-	print('Extracting Cards...')
-	no_circ = cv2.circle(gradient_img, (x,y), int(r*1.1), (0,0,0), -1)
-	contours, _ = cv2.findContours(gaussian_filter(no_circ,sigma=5), 
-		cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    
+    
+    
+    def _associate_point_to_player(self, image, point):
+        image_rows, image_columns, _ = image.shape
+        point_row , point_column     = point
 
-	array_contour = [contour.reshape(np.array(contour.shape)[[0,2]]) for contour in contours]
-	# take top 25% contours (top in terms of size of array)
-	top_four = np.asarray([(i,array_contour[i].shape[0]) for i in range(len(array_contour))])
-	top_four = np.array(sorted(top_four,key=lambda x:x[1],reverse=True))
-	top_four = top_four[:len(top_four)//4,0] #we take half of the largest
+        player_points = [(image_rows, image_columns / 2), (image_rows / 2, image_columns), (0, image_columns / 2), (image_rows / 2, 0)]
 
-	# got top four contours  
-	four_contour = np.array(array_contour)[list(top_four)]
+        distances = cdist(player_points, [point])
 
-	blank = np.zeros_like(no_circ)
+        player = np.argmin(distances) + 1
 
-	# sequential filling, since it's possible that two contours express the same rectangle and therefore
-	# for some reason it does not fill inside
-	for one_contour in four_contour:
-		cv2.drawContours(blank, [one_contour], -1, (255,255,255), thickness=cv2.FILLED)
-	
+        return player
+    
+    
+    def _associate_bbox_to_player(self, image, bbox):
+        column, row, width, height = bbox
+        center_row    = row    + height / 2
+        center_column = column + width  / 2
 
-	# 4 represents minimum number of pixels for a component to be kept
-	num_labels, labels_im, stats, centroids = cv2.connectedComponentsWithStats(blank, 4)
-
-	# keep 4 largest components (excluding background) supposedly represents the cards
-	_, r1, r2, r3, r4 = np.array(sorted([(idx,val) for idx,val 
-							in enumerate(stats[:,-1])],
-							key=lambda x:x[1],reverse=True))[:,0][:5]
-
-	card1 = (labels_im == r1)
-	card2 = (labels_im == r2)
-	card3 = (labels_im == r3)
-	card4 = (labels_im == r4)
-
-	xmin1, xmax1, ymin1, ymax1 = get_rectanglecoords(card1)
-	xmin2, xmax2, ymin2, ymax2 = get_rectanglecoords(card2)
-	xmin3, xmax3, ymin3, ymax3 = get_rectanglecoords(card3)
-	xmin4, xmax4, ymin4, ymax4 = get_rectanglecoords(card4)
-	
-	imgs = [img[ymin1:ymax1,xmin1:xmax1],
-			img[ymin2:ymax2,xmin2:xmax2],
-			img[ymin3:ymax3,xmin3:xmax3],
-			img[ymin4:ymax4,xmin4:xmax4]]
-
-	return (cropped_circ,
-			imgs[np.argmax([ymax1, ymax2, ymax3, ymax4])],
-			imgs[np.argmax([xmax1, xmax2, xmax3, xmax4])],
-			imgs[np.argmin([ymin1, ymin2, ymin3, ymin4])],
-			imgs[np.argmin([xmin1, xmin2, xmin3, xmin4])],
-			)
+        return self._associate_point_to_player(image, (center_row, center_column))
+    
+    
+    def __call__(self, image):
+        return self._extract(image)
