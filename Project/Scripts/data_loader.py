@@ -7,7 +7,7 @@ import re
 
 class DataLoader():
 
-    def __init__(self, data_dir = 'train_games'):
+    def __init__(self, data_dir = os.path.join('.', 'train_games')):
         self.data_dir = data_dir
         self._load_data()
 
