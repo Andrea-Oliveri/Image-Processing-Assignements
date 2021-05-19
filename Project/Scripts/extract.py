@@ -1,7 +1,9 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
 from scipy.spatial.distance import cdist
+
 
 
 ################################################## UTILs ##############################################################
@@ -46,11 +48,6 @@ def get_rectanglecoords(img):
 ################################################## MAIN-CLASS ##############################################################
 
 
-
-# global widht_height_list
-# width_height_list = []
-
-
 class Extractor():
     
     def __init__(self, canny_thresholds = (25, 100), hough_circles_parameters = (50, 30), sigma_gaussian_blur = 5,
@@ -90,7 +87,7 @@ class Extractor():
         
         figures_suits = self._extract_figures_suits(cards)
         
-        return dealer_player, cards
+        return dealer_player, cards, figures_suits
         
         
         
@@ -202,12 +199,12 @@ class Extractor():
             # remove crappy noise
             
             mask = np.logical_or(get_color_pixels(card, "red"), get_color_pixels(card, "black")).astype(np.uint8)
-
+            r,c = mask.shape
             num_labels, labels_im, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)
             
-            fig, ax = plt.subplots(1, 4, figsize = (12, 5))
-            ax[0].imshow(mask)
-            ax[0].set_title(num_labels)
+            #fig, ax = plt.subplots(1, 4, figsize = (12, 5))
+#             ax[0].imshow(mask)
+#             ax[0].set_title(num_labels)
             
             mask = cv2.medianBlur(mask, self.median_filter_size)
             new_num_labels, new_mask = self._get_objects_from_mask(mask)
@@ -216,12 +213,12 @@ class Extractor():
             X = np.array(np.where(mask==1)).T
 #            kmeans = GaussianMixture(n_components=3, random_state=0).fit(X)
 #            kmeans = AgglomerativeClustering(n_clusters=3).fit(X)
-            kmeans = KMeans(n_clusters=3, random_state=0, ).fit(X)
+            kmeans = KMeans(n_clusters=3, random_state=0).fit(X)
             
 #            cluster_labels = kmeans.predict(X)
-            cluster1 = np.where(kmeans.labels_==1)[0]
-            cluster2 = np.where(kmeans.labels_==2)[0]
-            cluster3 = np.where(kmeans.labels_==0)[0]
+            cluster1 = np.where(kmeans.labels_==0)[0]
+            cluster2 = np.where(kmeans.labels_==1)[0]
+            cluster3 = np.where(kmeans.labels_==2)[0]
 
             # kmeans-reconstruct, ugly re-code
             blank1 = np.zeros_like(mask)
@@ -239,25 +236,31 @@ class Extractor():
                 x,y = pair
                 blank3[x,y] = 1
             
-            ax[1].imshow(blank1)
-            ax[2].imshow(blank2)
-            ax[3].imshow(blank3)
+#             ax[1].imshow(blank1)
+#             ax[2].imshow(blank2)
+#             ax[3].imshow(blank3)
             
 #             ax[1].imshow(new_mask, vmin = 0, vmax = new_num_labels)
 #             ax[1].set_title(new_num_labels)  
             
-            plt.show()
+#             plt.show()
             
             # Here maybe other filtering with bboxes? In which cases, maybe relax constraints to have neater 
             # figures, asthey will be filtered here. Important is that symbols don't merge with crap as that 
             # will increase bbox size a lot.
             
-            figure_symbol = None
-            suit_symbol   = None
+            idx_figure = np.argmin([(center[0]-r//2)**2+(center[1]-c//2)**2 
+                       for center in kmeans.cluster_centers_])
+            idx_suits = np.argmin([center[0]**2 + center[1]**2
+                                for center in kmeans.cluster_centers_])
+            
+            figure_symbol = [blank1,blank2,blank3][idx_figure]
+            suit_symbol   = [blank1,blank2,blank3][idx_suits][:int(r/3),:int(c/3)]
+            
             
             figures_suits[player] = {"figure": figure_symbol, "suit": suit_symbol}   
             
-            
+        return figures_suits
             
     def _detect_same_object(self, component1, component2):
         """
@@ -324,6 +327,7 @@ class Extractor():
             if n_pixels < self.min_size:
                 labels[labels == component] = 0
             else:
+                continue
                 print("N. pixels component: ", n_pixels)
 
         # -1 for the background
