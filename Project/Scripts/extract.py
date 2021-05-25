@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.cluster import KMeans
 from scipy.spatial.distance import cdist
 
 
@@ -12,7 +11,7 @@ def get_color_pixels(image, color):
     image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     
     if color == "black":
-        return cv2.inRange(image_hsv, (0, 0, 0), (180, 255, 30))
+        return cv2.inRange(image_hsv, (0, 0, 0), (180, 255, 45))
 
     elif color == "green":
         return cv2.inRange(image_hsv, (40, 50, 30), (75, 255, 255))
@@ -25,25 +24,6 @@ def get_color_pixels(image, color):
     else:
         raise ValueError(f"Color parameter must be one of 'black', 'green', 'red'. Got: {color}")
 
-def associate_point_to_player(image_shape, point):
-    image_rows, image_columns = image_shape
-    point_row , point_column  = point
-    
-    player_points = [(image_rows, image_columns / 2), (image_rows / 2, image_columns), (0, image_columns / 2), (image_rows / 2, 0)]
-    
-    distances = cdist(player_points, [point])
-    
-    player = np.argmin(distances) + 1
-    
-    return player
-
-def get_rectanglecoords(img):
-	# binary_img simply get (from connected components image but masked by label)
-	activ_coord = np.where(img)
-	ymin,ymax = np.min(activ_coord[0]), np.max(activ_coord[0])
-	xmin,xmax = np.min(activ_coord[1]), np.max(activ_coord[1])
-	
-	return xmin,xmax,ymin,ymax
 
 ################################################## MAIN-CLASS ##############################################################
 
@@ -51,8 +31,9 @@ def get_rectanglecoords(img):
 class Extractor():
     
     def __init__(self, canny_thresholds = (25, 100), hough_circles_parameters = (50, 30), sigma_gaussian_blur = 5,
-                 smaller_card_side_range = (400, 700), larger_card_size_range = (600, 900), nms_threshold = 0.3,
-                 tolerance = 30, min_size = 2000, median_filter_size = 5):
+                 smaller_card_side_range = (400, 700), larger_card_size_range = (600, 900), 
+                 nms_threshold = 0.3, tolerance = 0, min_size = 2000, median_filter_size = 7,
+                 figure_suits_crop_margin = 70):
         """
         tolerance::[float]
             Tolerance in inequality check to decide whether components are close enough.
@@ -74,6 +55,7 @@ class Extractor():
         self.tolerance = tolerance
         self.min_size  = min_size
         self.median_filter_size = median_filter_size
+        self.figure_suits_crop_margin = figure_suits_crop_margin
         
         
     def __call__(self, image):
@@ -123,8 +105,7 @@ class Extractor():
         gradient_no_circle         = cv2.circle(gradient, (column, row), int(radius * 1.1), (0, 0, 0), cv2.FILLED)
         gradient_no_circle_blurred = cv2.GaussianBlur(gradient_no_circle, None, sigmaX = self.sigma_gaussian_blur)
         
-        # Here as we don't use hierarcy returned parameter we don't need RETR_TREE and we can use RETR_LIST
-        contours, _ = cv2.findContours(gradient_no_circle_blurred, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(gradient_no_circle_blurred, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         
         bounding_boxes = []
         for contour in contours:
@@ -163,9 +144,8 @@ class Extractor():
         height_in_smaller_range = self.smaller_card_side_range[0] <= height <= self.smaller_card_side_range[1]
         height_in_larger_range  = self.larger_card_size_range [0] <= height <= self.larger_card_size_range [1]
         
-        return (width_in_smaller_range and height_in_larger_range) or (width_in_larger_range and height_in_smaller_range)
+        return (width_in_smaller_range and height_in_larger_range) or (width_in_larger_range and height_in_smaller_range)    
     
-
     
     def _associate_point_to_player(self, image, point):       
         image_rows, image_columns = image.shape[0], image.shape[1]
@@ -193,75 +173,81 @@ class Extractor():
         
         for player, card in cards.items():
             
-            # Maybe do illumination equalization? Didn't work when I tried 
+            red_mask   = get_color_pixels(card, "red")
+            black_mask = get_color_pixels(card, "black")
+            color      = "red" if red_mask.sum() > black_mask.sum() else "black"
             
-            # Maybe instead of doing sum, do them separately and take the one with largest number of pixels to try
-            # remove crappy noise
-            
-            mask = np.logical_or(get_color_pixels(card, "red"), get_color_pixels(card, "black")).astype(np.uint8)
-            r,c = mask.shape
-            num_labels, labels_im, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)
-            
-            #fig, ax = plt.subplots(1, 4, figsize = (12, 5))
-#             ax[0].imshow(mask)
-#             ax[0].set_title(num_labels)
+            mask       = red_mask if color == 'red' else black_mask
             
             mask = cv2.medianBlur(mask, self.median_filter_size)
-            new_num_labels, new_mask = self._get_objects_from_mask(mask)
-
-            mask = new_mask.copy() >= 1
-            X = np.array(np.where(mask==1)).T
-#            kmeans = GaussianMixture(n_components=3, random_state=0).fit(X)
-#            kmeans = AgglomerativeClustering(n_clusters=3).fit(X)
-            kmeans = KMeans(n_clusters=3, random_state=0).fit(X)
             
-#            cluster_labels = kmeans.predict(X)
-            cluster1 = np.where(kmeans.labels_==0)[0]
-            cluster2 = np.where(kmeans.labels_==1)[0]
-            cluster3 = np.where(kmeans.labels_==2)[0]
-
-            # kmeans-reconstruct, ugly re-code
-            blank1 = np.zeros_like(mask)
-            for pair in X[cluster1]:
-                x,y = pair
-                blank1[x,y] = 1
+            new_mask = self._get_objects_from_mask(mask)
+            labels   = np.unique(new_mask)
+            
+            stats = []
+            for label in labels:
                 
-            blank2 = np.zeros_like(mask)
-            for pair in X[cluster2]:
-                x,y = pair
-                blank2[x,y] = 1
+                # Background
+                if label == 0:
+                    continue
+                    
+                rows, cols       = np.where(new_mask == label)
+                centroid         = np.mean(rows), np.mean(cols)
+                min_row, max_row = np.min (rows), np.max (rows)
+                min_col, max_col = np.min (cols), np.max (cols)
                 
-            blank3 = np.zeros_like(mask)
-            for pair in X[cluster3]:
-                x,y = pair
-                blank3[x,y] = 1
+                stats.append({'distance': np.sum(np.square(centroid)), 'area': len(rows),
+                              'min_row': min_row, 'max_row': max_row, 
+                              'min_col': min_col, 'max_col': max_col})
             
-#             ax[1].imshow(blank1)
-#             ax[2].imshow(blank2)
-#             ax[3].imshow(blank3)
-            
-#             ax[1].imshow(new_mask, vmin = 0, vmax = new_num_labels)
-#             ax[1].set_title(new_num_labels)  
-            
-#             plt.show()
-            
-            # Here maybe other filtering with bboxes? In which cases, maybe relax constraints to have neater 
-            # figures, asthey will be filtered here. Important is that symbols don't merge with crap as that 
-            # will increase bbox size a lot.
-            
-            idx_figure = np.argmin([(center[0]-r//2)**2+(center[1]-c//2)**2 
-                       for center in kmeans.cluster_centers_])
-            idx_suits = np.argmin([center[0]**2 + center[1]**2
-                                for center in kmeans.cluster_centers_])
-            
-            figure_symbol = [blank1,blank2,blank3][idx_figure]
-            suit_symbol   = [blank1,blank2,blank3][idx_suits][:int(r/3),:int(c/3)]
-            
-            
-            figures_suits[player] = {"figure": figure_symbol, "suit": suit_symbol}   
+                        
+            object_top_left     = min(stats, key = lambda elem: elem['distance'])
+            object_bottom_right = max(stats, key = lambda elem: elem['distance'])
+
+            suit_object = object_top_left if object_top_left['area'] > object_bottom_right['area'] else object_bottom_right
+            suit_symbol = self._crop_element_with_margins(card, 
+                                                          (suit_object['min_row'], suit_object['max_row']),
+                                                          (suit_object['min_col'], suit_object['max_col']),
+                                                          self.figure_suits_crop_margin)    
+
+            card = card[object_top_left['max_row']:object_bottom_right['min_row'], :]
+
+            figure_object = {'min_row': np.inf, 'max_row': -np.inf, 'min_col': np.inf, 'max_col': -np.inf}
+            for elem in stats:
+                if elem not in [object_top_left, object_bottom_right]:
+                    figure_object['min_row'] = min(figure_object['min_row'], elem['min_row'])
+                    figure_object['min_col'] = min(figure_object['min_col'], elem['min_col'])
+                    figure_object['max_row'] = max(figure_object['max_row'], elem['max_row'])
+                    figure_object['max_col'] = max(figure_object['max_col'], elem['max_col'])
+
+            figure_object['min_row'] -= object_top_left['max_row']
+            figure_object['max_row'] -= object_top_left['max_row']
+
+
+            figure_symbol = self._crop_element_with_margins(card, 
+                                                            (figure_object['min_row'], figure_object['max_row']),
+                                                            (figure_object['min_col'], figure_object['max_col']),
+                                                            self.figure_suits_crop_margin)    
+
+            figures_suits[player] = {"figure": figure_symbol, "suit": suit_symbol, "color": color}   
             
         return figures_suits
-            
+        
+        
+    def _crop_element_with_margins(self, image, row_range, col_range, margin):
+        min_row, max_row = row_range
+        min_col, max_col = col_range
+
+        image_rows, image_cols, _ = image.shape
+
+        min_row = max(min_row - margin, 0)
+        min_col = max(min_col - margin, 0)
+        max_row = min(max_row + margin, image_rows - 1)
+        max_col = min(max_col + margin, image_cols - 1)
+        
+        return image[min_row:max_row, min_col:max_col]
+
+        
     def _detect_same_object(self, component1, component2):
         """
         Function returning whether two components are sufficiently close to be classified as belonging
@@ -320,24 +306,19 @@ class Extractor():
         # Merges close components that belong to same object.
         for old_component, new_component in new_labels.items():
             labels[labels == old_component] = new_component
-
-        # Removes too small groups (merges them with background).
-        unique, counts = np.unique(labels, return_counts=True)
-        for component, n_pixels in zip(unique, counts):
+        
+        # Removes too small groups (merges them with background), assuring there are always at least 3 components 
+        # plus background which are kept, and which would be the two suits and the figure.
+        unique, counts = np.unique(labels, return_counts = True)
+        max_groups_that_can_be_removed = len(unique) - 3 - 1
+        for idx_smallest_group in np.argsort(counts):
+            if max_groups_that_can_be_removed <= 0:
+                break
+                
+            component = unique[idx_smallest_group]
+            n_pixels  = counts[idx_smallest_group]
             if n_pixels < self.min_size:
                 labels[labels == component] = 0
-            else:
-                continue
-                print("N. pixels component: ", n_pixels)
-
-        # -1 for the background
-        return len(np.unique(labels)) -1 , labels
-                
+                max_groups_that_can_be_removed -= 1
         
-        # Creates mask from components not in background.
-        objects_mask = labels > 0
-
-        return len(np.unique(labels[objects_mask])), labels
-
-
-        
+        return labels

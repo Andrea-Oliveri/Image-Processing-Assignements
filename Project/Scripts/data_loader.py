@@ -32,7 +32,7 @@ class DataLoader():
         labels = {k: v[0] for k, v in labels.items()}
         
         return image, labels
-
+    
 
     def _load_data(self):
 
@@ -70,3 +70,11 @@ class DataLoader():
                    
         
         self.dataframe = pd.concat(self.dataframe, axis = 0).sort_values(['game', 'round']).reset_index(drop = True)
+        
+        
+    def get_available_games(self):
+        return np.sort(self.dataframe['game'].unique())
+    
+    
+    def get_available_rounds(self, n_game):
+        return np.sort(self.dataframe[self.dataframe['game'] == n_game]['round'].unique())
