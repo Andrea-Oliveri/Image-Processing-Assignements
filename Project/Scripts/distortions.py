@@ -63,6 +63,9 @@ def gaussian_blur(image, sigma_horizontal, sigma_vertical = 0.):
     return cv2.GaussianBlur(image, ksize = (0, 0), sigmaX = sigma_horizontal, sigmaY = sigma_vertical)
 
 
+def rotate_180(image):
+    return np.rot90(image, k=2)
+
 
 def add_gaussian_noise(image, mean, sigma, nb_bits = 1):
     """
