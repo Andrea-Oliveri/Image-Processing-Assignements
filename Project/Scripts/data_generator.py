@@ -53,7 +53,7 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
     def __getitem__(self, index):
         'Generate one batch of data'
         X = np.empty((self.batch_size, *self.resolution), dtype = np.float32)
-        y = np.zeros((self.batch_size, self.n_classes  ), dtype = np.uint8)
+        y = np.zeros(self.batch_size, dtype = np.uint8)
                        
         # Add randomly picked MNIST digits to batch, applying data augmentation on them if necessary.
         n_tot_mnist_exemples_per_batch = self.n_exemples_each_class_per_batch * self.n_mnist_classes
@@ -65,16 +65,16 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
             mnist_image = self.mnist_images[index_mnist]
             mnist_label = self.mnist_labels[index_mnist]
             
-            X[i, :] = self.pretreat_image(mnist_image, self.augment_mnist_data)
-            y[i, mnist_label] = 1
+            X[i, :] = self.pretreat_image(mnist_image, self.augment_mnist_data, can_image_be_rotated_180 = False)
+            y[i   ] = mnist_label
             
             i += 1
               
         # Add figures to batch, applying data augmentatin on them if necessary.
         for _ in range(self.n_exemples_each_class_per_batch):
             for figure_image, figure_label in zip(self.figures_images, self.figures_labels):
-                X[i, :] = self.pretreat_image(figure_image, self.augment_figure_data)
-                y[i, figure_label] = 1
+                X[i, :] = self.pretreat_image(figure_image, self.augment_figure_data, can_image_be_rotated_180 = True)
+                y[i   ] = figure_label
         
                 i += 1
         
@@ -98,14 +98,14 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
         self.random_index_mnist = np.transpose(idx_class_mnist).flatten()
         
         
-    def pretreat_image(self, image, random_augmentation):
+    def pretreat_image(self, image, random_augmentation, can_image_be_rotated_180 = False):
         new_image = image
                         
         new_image = zoom_image_to_meet_shape(new_image, self.resolution)
 
         new_image = normalize(new_image)
         
-        new_image = self.random_data_augmentation(new_image) if random_augmentation else new_image
+        new_image = self.random_data_augmentation(new_image, can_image_be_rotated_180) if random_augmentation else new_image
 
         new_image = binarize(new_image)
 
@@ -113,7 +113,7 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
 
 
         
-    def random_data_augmentation(self, image):
+    def random_data_augmentation(self, image, can_image_be_rotated_180 = False):
         """Randomly performs a data augmentation on the data passed as parameter and returns the new data."""
         new_image = image
         
@@ -122,6 +122,8 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
         
         #new_image = apply_random_distortion_from_range(gaussian_blur, new_image,
         #                                               {"sigma_horizontal": (1e-6, 1e-1), "sigma_vertical": (1e-6, 1e-1)})
+        
+        new_image = rotate_180(new_image) if can_image_be_rotated_180 and np.random.choice([True, False]) else new_image
         
         new_image = apply_random_distortion_from_range(zoom_image, new_image,
                                                        {"zoom_factor": (0.8, 1)})

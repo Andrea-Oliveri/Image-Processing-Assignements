@@ -11,7 +11,7 @@ def get_color_pixels(image, color):
     image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     
     if color == "black":
-        return cv2.inRange(image_hsv, (0, 0, 0), (180, 255, 45))
+        return cv2.inRange(image_hsv, (0, 0, 0), (180, 255, 50))
 
     elif color == "green":
         return cv2.inRange(image_hsv, (40, 50, 30), (75, 255, 255))
@@ -33,7 +33,7 @@ class Extractor():
     def __init__(self, canny_thresholds = (25, 100), hough_circles_parameters = (50, 30), sigma_gaussian_blur = 5,
                  smaller_card_side_range = (400, 700), larger_card_size_range = (600, 900), 
                  nms_threshold = 0.3, tolerance = 0, min_size = 2000, median_filter_size = 7,
-                 figure_suits_crop_margin = 70):
+                 figure_suits_crop_margin = 70, min_distance_figure_component = 0.1, max_distance_figure_component = 0.5):
         """
         tolerance::[float]
             Tolerance in inequality check to decide whether components are close enough.
@@ -56,6 +56,8 @@ class Extractor():
         self.min_size  = min_size
         self.median_filter_size = median_filter_size
         self.figure_suits_crop_margin = figure_suits_crop_margin
+        self.min_distance_figure_component = min_distance_figure_component
+        self.max_distance_figure_component = max_distance_figure_component
         
         
     def __call__(self, image):
@@ -86,10 +88,6 @@ class Extractor():
 
         # Take the only circle detected, as we put a high minimum distance.
         column, row, radius = circles[0][0]
-        
-        # Show detection.
-        #plt.imshow(image[row-radius:row+radius,column-radius:column+radius][:,:,::-1])
-        #plt.show()
         
         # Determine which player is dealer.
         dealer_player = self._associate_point_to_player(image, (row, column))
@@ -132,11 +130,6 @@ class Extractor():
     
     def _bbox_can_be_card(self, bbox):
         _, _, width, height = bbox
-        
-        # Debug only ---------
-#         width_height_list.append(width)
-#         width_height_list.append(height)
-        # --------------------
         
         width_in_smaller_range = self.smaller_card_side_range[0] <= width <= self.smaller_card_side_range[1]
         width_in_larger_range  = self.larger_card_size_range [0] <= width <= self.larger_card_size_range [1]
@@ -196,7 +189,9 @@ class Extractor():
                 min_row, max_row = np.min (rows), np.max (rows)
                 min_col, max_col = np.min (cols), np.max (cols)
                 
-                stats.append({'distance': np.sum(np.square(centroid)), 'area': len(rows),
+                diagonal_length = card.shape[0] ** 2 + card.shape[1] ** 2
+                
+                stats.append({'distance': np.sum(np.square(centroid)) / diagonal_length, 'area': len(rows),
                               'min_row': min_row, 'max_row': max_row, 
                               'min_col': min_col, 'max_col': max_col})
             
@@ -210,18 +205,14 @@ class Extractor():
                                                           (suit_object['min_col'], suit_object['max_col']),
                                                           self.figure_suits_crop_margin)    
 
-            card = card[object_top_left['max_row']:object_bottom_right['min_row'], :]
-
             figure_object = {'min_row': np.inf, 'max_row': -np.inf, 'min_col': np.inf, 'max_col': -np.inf}
             for elem in stats:
-                if elem not in [object_top_left, object_bottom_right]:
+                if elem not in [object_top_left, object_bottom_right] and \
+                   self.min_distance_figure_component < elem['distance'] < self.max_distance_figure_component:
                     figure_object['min_row'] = min(figure_object['min_row'], elem['min_row'])
                     figure_object['min_col'] = min(figure_object['min_col'], elem['min_col'])
                     figure_object['max_row'] = max(figure_object['max_row'], elem['max_row'])
                     figure_object['max_col'] = max(figure_object['max_col'], elem['max_col'])
-
-            figure_object['min_row'] -= object_top_left['max_row']
-            figure_object['max_row'] -= object_top_left['max_row']
 
 
             figure_symbol = self._crop_element_with_margins(card, 
