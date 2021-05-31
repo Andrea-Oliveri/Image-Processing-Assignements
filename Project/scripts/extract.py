@@ -65,13 +65,11 @@ class Extractor():
         
         
     def _extract(self, image):
-        dealer_circle, dealer_player = self._extract_dealer(image)
-        
-        cards = self._extract_cards(image, dealer_circle)
-        
+        dealer_data   = self._extract_dealer(image)
+        cards         = self._extract_cards(image, dealer_data['circle'])
         figures_suits = self._extract_figures_suits(cards)
         
-        return dealer_player, cards, figures_suits
+        return dealer_data, cards, figures_suits
         
         
         
@@ -92,7 +90,8 @@ class Extractor():
         # Determine which player is dealer.
         dealer_player = self._associate_point_to_player(image, (row, column))
         
-        return (column, row, radius), dealer_player
+        return {'circle': (column, row, radius), 'player': dealer_player, 
+                'bbox': (column - radius, row - radius, 2 * radius, 2 * radius)}
         
     
     def _extract_cards(self, image, dealer_circle):
@@ -114,7 +113,6 @@ class Extractor():
         indices = cv2.dnn.NMSBoxes(bounding_boxes, [w*h for _, _, w, h in bounding_boxes], 0, self.nms_threshold)
         bounding_boxes = [bbox for idx, bbox in enumerate(bounding_boxes) if idx in indices]
         
-
         cards = {}
         for bbox in bounding_boxes:
             player = self._associate_bbox_to_player(image, bbox)
@@ -122,7 +120,7 @@ class Extractor():
             card_image = image[row:row+height, column:column+width]
             card_image = np.rot90(card_image, 1-player)
             
-            cards[player] = card_image
+            cards[player] = {'image': card_image, 'bbox': bbox}
         
         return cards
         
@@ -164,7 +162,8 @@ class Extractor():
     def _extract_figures_suits(self, cards):
         figures_suits = {}
         
-        for player, card in cards.items():
+        for player, card_data in cards.items():
+            card = card_data["image"]
             
             red_mask   = get_color_pixels(card, "red")
             black_mask = get_color_pixels(card, "black")
@@ -220,8 +219,13 @@ class Extractor():
                                                             (figure_object['min_col'], figure_object['max_col']),
                                                             self.figure_suits_crop_margin)    
 
-            figures_suits[player] = {"figure": figure_symbol, "suit": suit_symbol, "color": color}   
+            figures_suits[player] = {"figure": figure_symbol, "suit": suit_symbol, "color": color}
             
+            for key, object_to_bbox in zip(["bbox_figure", "bbox_suit_1", "bbox_suit_2"], [figure_object, object_top_left, object_bottom_right]):
+                width  = object_to_bbox["max_col"] - object_to_bbox["min_col"]
+                height = object_to_bbox["max_row"] - object_to_bbox["min_row"]
+                figures_suits[player][key] = (object_to_bbox["min_col"], object_to_bbox["min_row"], width, height)
+
         return figures_suits
         
         
