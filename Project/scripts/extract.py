@@ -5,8 +5,6 @@ from scipy.spatial.distance import cdist
 
 
 
-################################################## UTILs ##############################################################
-
 def get_color_pixels(image, color):
     image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     
@@ -25,7 +23,7 @@ def get_color_pixels(image, color):
         raise ValueError(f"Color parameter must be one of 'black', 'green', 'red'. Got: {color}")
 
 
-################################################## MAIN-CLASS ##############################################################
+
 
 
 class Extractor():
