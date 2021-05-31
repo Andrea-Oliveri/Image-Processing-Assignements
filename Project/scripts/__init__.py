@@ -4,7 +4,7 @@ from .utils import *
 from .plots import *
 from .model import *
 from .extract import *
-from .hu_moments import *
+from .suit_classifier import *
 from .distortions import *
 
 
