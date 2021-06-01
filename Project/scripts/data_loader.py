@@ -59,7 +59,7 @@ class DataLoader():
         game_numbers = []
         
         for game_dir in os.listdir(self.data_dir):
-            game_number, = re.findall(r'(?<=game)\d+', game_dir)
+            game_number = re.findall(r'(?<=game)\d+', game_dir)[-1]
         
             game_numbers.append( int(game_number) )
             
@@ -75,8 +75,8 @@ class DataLoader():
         image_files   = [file for file in os.listdir(game_path) if file.endswith('.jpg')]
         round_numbers = []
         
-        for image_file in image_files:            
-            round_number, = re.findall(r'\d+(?=.jpg)', image_file)
+        for image_file in image_files:
+            round_number = re.findall(r'\d+(?=.jpg)', image_file)[-1]
             
             round_numbers.append( int(round_number) )
             

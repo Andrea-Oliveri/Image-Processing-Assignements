@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import tensorflow as tf
+import sklearn
 import os
 import pickle
 
@@ -18,7 +19,8 @@ class FiguresSuitsClassifier():
         # Load figure and suit classifiers.
         self.figure_classifier = tf.keras.models.load_model(figure_classifier_save_path)
         with open(suits_classifier_save_path, 'rb') as file:
-            self.suits_classifier = pickle.load(file)
+            self.suits_classifier       = pickle.load(file)
+            self.n_fourier_coefficients = pickle.load(file)
 
         self.figure_classifier_input_resolution = figure_classifier_input_resolution
         
@@ -40,9 +42,9 @@ class FiguresSuitsClassifier():
 
 
     def predict_suit(self, image, color):
-        preprocessed_image = self._preprocess_suit(image, color)
+        preprocessed_image = self.preprocess_suit(image, color)
         
-        features = self._get_fourier_descriptor(preprocessed_image, n_coefficients_to_keep = 10)
+        features = self.get_fourier_descriptor(preprocessed_image, n_coefficients_to_keep = self.n_fourier_coefficients)
                 
         prediction, = self.suits_classifier.predict([features])
         
@@ -69,7 +71,8 @@ class FiguresSuitsClassifier():
         return mask.astype(np.float32)
     
     
-    def _preprocess_suit(self, image, color):
+    @staticmethod
+    def preprocess_suit(image, color):
         mask = get_color_pixels(image, color)
         
         # Only take the largest component (except background).
@@ -79,10 +82,9 @@ class FiguresSuitsClassifier():
 
         return mask
     
-    
 
-
-    def _get_fourier_descriptor(self, image, n_coefficients_to_keep = 2):
+    @staticmethod
+    def get_fourier_descriptor(image, n_coefficients_to_keep = 2):
         """
         Function returning a Fourier descriptor of image made by keeping the first n_coefficients_to_keep coefficients
         (not including the bias coefficient).

@@ -30,7 +30,7 @@ def plot_history(history):
     plt.show()
     
     
-def draw_overlay(image, bboxes_and_predictions, game, round_):
+def draw_and_plot_overlay(image, bboxes_and_predictions, game, round_):
     
     def draw_bbox(image, bbox, bbox_type, thickness = 30, bbox_title = ""):
         if bbox_type == "card" or bbox_type == "dealer":
