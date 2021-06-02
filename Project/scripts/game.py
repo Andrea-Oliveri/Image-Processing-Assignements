@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import warnings
 import os
+import re
 
 from .data_loader import DataLoader
 from .extract import Extractor
@@ -12,6 +13,42 @@ from .utils import print_results, evaluate_game
     
 def predict_game(game_dir_path = None, game_number = None, data_loader = None, extractor = None, classifier = None,
                  draw_overlay = True, compute_accuracy = False):
+    """
+    For all rounds of one game, extract the dealer, figures and suits of each player, predict their values, then compute the 
+    score of each player at the end of the game using both standard and advanced rules. Optionally shows the overlay and computes
+    the accuracy of the predictions. 
+    
+    The game to analyse can be specified in one of two ways. Either game_dir_path is set while game_number and data_loader are
+    left to None, or game_dir_path is left to None and game_number and data_loader are set. If everything is provided, 
+    game_dir_path is used and data_loader and game_number are ignored.
+    
+    The extractor and classifier parameters can be ignored irrespective of all the others, in which case a new Extractor and 
+    FiguresSuitsClassifier instance will be created with default parameters.
+    
+    
+    Args:
+        game_dir_path::[str]
+            The path of the directory containing the images of each round, plus the ground truth .csv (the latter is only needed
+            if compute_accuracy = True).
+        game_number::[int]
+            Number of the game, as contained in the data_loader.data_dir folder.
+        data_loader::[DataLoader]
+            The instance initialized with a data_dir containing game with number game_number.
+        extractor::[Extractor]
+            Extractor instance to be used to extract dealer, cards, figures and suits from the image of each round.
+            If not provided, an instance with default parameters is created.
+        classifier::[FiguresSuitsClassifier]
+            FiguresSuitsClassifier instance to be used to predict figure and suits extracted from images of each round. 
+            If not provided, an instance with default parameters is created.
+        draw_overlay::[boolean]
+            Whether for each round an overlay showing the extracted regions of interest for the dealer, cards, figures, suits
+            as well as the predictions should be shown.
+        compute_accuracy::[boolean]
+            Whether when all predictions of all rounds are available, the overall prediction accuracy over the game should be
+            computed by using the ground truth .csv file contained in the same folder as the round images.
+    Returns:
+        None
+    """
     # Can be called in two ways: game_dir_path alone and no game_number and data_laoder or data_loader and game_number.
     # extractor and classifier are independent: can be set or left to None independently of all the rest.
 
@@ -29,10 +66,8 @@ def predict_game(game_dir_path = None, game_number = None, data_loader = None, e
 
         # Create instance of DataLoader for given game_dir_path and store game number.
         data_loader = DataLoader(parent_dir)
-        
-        print(re.match(r'(?<=game)\d+', game_dir))
-        
-        game_number = int( re.findall(r'(?<=game)\d+', game_dir)[-1] )
+                
+        game_number = int( re.findall(r'(?<=game)\d+', game_dir_path)[-1] )
             
     
     # Instanciate Extractor and FiguresSuitsClassifier with default values if not provided.
@@ -76,11 +111,12 @@ def predict_game(game_dir_path = None, game_number = None, data_loader = None, e
     # Calculate score for standard and advanced game rules.
     scores = {mode: {key: 0 for key in round_results.keys() if 'P' in key} for mode in ['standard', 'advanced']}
     figure_to_weight = {**{str(digit): digit for digit in range(10)}, **{'J': 10, 'Q': 11, 'K': 12}}
+    players = ['P1', 'P2', 'P3', 'P4']
     
     game_results = pd.DataFrame(game_results).sort_values('round', ascending = True)
     for _, round_results in game_results.iterrows():        
-        player_figures = {key: figure_to_weight[value[0]] for key, value in round_results.items() if 'P' in key}
-        player_suits   = {key: value[1]                   for key, value in round_results.items() if 'P' in key}
+        player_figures = {key: figure_to_weight[value[0]] for key, value in round_results.items() if key in players}
+        player_suits   = {key: value[1]                   for key, value in round_results.items() if key in players}
         dealer_suit    = player_suits['P' + str(round_results['D'])]
         
         # Standard rules:
@@ -95,7 +131,6 @@ def predict_game(game_dir_path = None, game_number = None, data_loader = None, e
         scores['advanced'][winning_player] += 1
         
     # Print results of game.   
-    players = ['P1', 'P2', 'P3', 'P4']
     print_results(game_results[players].values,
                   game_results['D'].values,
                   [scores['standard'][player] for player in players], 
@@ -108,6 +143,9 @@ def predict_game(game_dir_path = None, game_number = None, data_loader = None, e
                "To predict accuracy over game ground truth file must be available. No file named " + ground_truth_path
         
         ground_truth = pd.read_csv(ground_truth_path)
+        
+        assert not ground_truth.isnull().values.any(), \
+               f"To predict accuracy over game ground truth file must be filled entirely. {ground_truth_path} contains missing entries."
 
         accuracy_standard = evaluate_game(game_results[players].values, ground_truth[players].values, mode_advanced = False)
         accuracy_advanced = evaluate_game(game_results[players].values, ground_truth[players].values, mode_advanced = True)

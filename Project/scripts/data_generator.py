@@ -117,12 +117,6 @@ class DataGenerator(tensorflow.keras.utils.Sequence):
         """Randomly performs a data augmentation on the data passed as parameter and returns the new data."""
         new_image = image
         
-        #new_image = apply_random_distortion_from_range(add_gaussian_noise, new_image, 
-        #                                               {"mean": (0, 0), "sigma": (0, 0.3)})
-        
-        #new_image = apply_random_distortion_from_range(gaussian_blur, new_image,
-        #                                               {"sigma_horizontal": (1e-6, 1e-1), "sigma_vertical": (1e-6, 1e-1)})
-        
         new_image = rotate_180(new_image) if can_image_be_rotated_180 and np.random.choice([True, False]) else new_image
         
         new_image = apply_random_distortion_from_range(zoom_image, new_image,

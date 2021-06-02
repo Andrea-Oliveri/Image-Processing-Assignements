@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Input, Conv2D, ReLU, MaxPool2D, Flatten, Dense, SpatialDropout2D, Dropout
+from tensorflow.keras.layers import Input, Conv2D, MaxPool2D, Flatten, SpatialDropout2D
 
-# Adapted from: https://towardsdatascience.com/mnist-handwritten-digits-classification-using-a-convolutional-neural-network-cnn-af5fafbc35e9
+
 def convolutional_network(input_shape = (28, 28, 1), show_summary = True):
     """
     Returns an instance of a tensorflow.keras model implementing a Convolutional Network network.
@@ -15,7 +15,7 @@ def convolutional_network(input_shape = (28, 28, 1), show_summary = True):
 
     Returns:
         model::[tensorflow.keras model]
-            Instance of tensorflow.keras model implementing a Fully Convolutional Network architecture.
+            Instance of tensorflow.keras model implementing a Convolutional Network architecture.
 
     """
     model = Sequential([ Input(input_shape), 

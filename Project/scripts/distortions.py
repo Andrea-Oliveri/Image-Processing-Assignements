@@ -49,6 +49,20 @@ def normalize(image, nb_bits = 1):
 
 
 def binarize(image, thr = None):
+    """
+    Binarized the image by setting to 0 all values below thr and to 1 all values above. 
+    If thr is not provided, the mean between the minimum and maximum value contained in the image is used.
+
+    Args:
+        image::[np.array]
+            Numpy array containing one image of shape (n_lines, n_columns, n_channels).
+        thr::[float]
+            The threshold to use to binarize the image.
+    Returns:
+        binarized_image::[np.array]
+            Numpy array containing the binarized version of the image.
+       
+    """
     if thr is None:
         min_val = np.min(image)
         max_val = np.max(image)
@@ -59,11 +73,41 @@ def binarize(image, thr = None):
 
 
 def gaussian_blur(image, sigma_horizontal, sigma_vertical = 0.):
+    """
+    Function adding a gaussin blur of desired horizontal and vertical standard deviation to 
+    input image. If vertical standard deviation is not specified, the same value as the
+    horizontal one is used.
+    
+    Args:
+        image::[np.array]
+            Numpy array containing one image of shape (n_lines, n_columns, n_channels).
+        sigma_horizontal::[float]
+            Horizontal standard deviation of the gaussian blur filter.
+        sigma_horizontal::[float]
+            Vertical standard deviation of the gaussian blur filter.
+       
+    Returns:
+        blurred_image::[np.array]
+            Numpy array containing the blurred version of the image.
+       
+    """
     # If sigma_vertical = 0, opencv puts it equal to sigma_horizontal
     return cv2.GaussianBlur(image, ksize = (0, 0), sigmaX = sigma_horizontal, sigmaY = sigma_vertical)
 
 
 def rotate_180(image):
+    """
+    Rotates input image by 180 degrees.
+    
+    Args:
+        image::[np.array]
+            Numpy array containing one image of shape (n_lines, n_columns, n_channels).
+       
+    Returns:
+        rotated_image::[np.array]
+            Numpy array containing the rotated version of the image.
+       
+    """
     return np.rot90(image, k=2)
 
 
