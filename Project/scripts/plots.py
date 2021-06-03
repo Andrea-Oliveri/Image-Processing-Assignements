@@ -32,8 +32,46 @@ def plot_history(history):
     
     
 def draw_and_plot_overlay(image, bboxes_and_predictions, game, round_):
+    """
+    Function drawing on image the bounding boxes and predictions in bboxes_and_predictions, and
+    showing the resulting image with a title containing game and round_.
+    
+    Args:
+        image::[np.array]
+            Image on which we want to draw the bounding boxes and write predictions on.
+        bboxes_and_predictions::[dict]
+            Dictionary containing the bounding boxes and predictions for the dealer, the card of each player
+            and the figure and suits in each card.
+        game::[int]
+            The game number the image belongs to. 
+        round_::[int]
+            The game round the image belongs to. 
+
+    Returns:
+        None
+    """
     
     def draw_bbox(image, bbox, bbox_type, thickness = 30, bbox_title = ""):
+        """
+        Function drawing a bounding box on the image with color depending on the type of bounding box
+        and adding a writing on top of the bounding box.
+        
+        Args:
+            image::[np.array]
+                Image on which we want to draw the bounding box and write the title.
+            bbox::[tuple]
+                Tuple with (col, row, width, height) describing the bounding box to draw on the image.
+            bbox_type::[str]
+                Type of bounding box to draw. Used to determine the color of the bounding box. 
+            thickness::[int]
+                The tickness in pixels of the bbox border.
+            bbox_title::[str]
+                The title to write on top of the bounding box.
+            
+        Returns:
+            new_image::[np.array]
+                Image on which we drew the bounding box and wrote the title.
+        """
         if bbox_type == "card" or bbox_type == "dealer":
             color = (200, 72, 16)
         else:
@@ -65,7 +103,7 @@ def draw_and_plot_overlay(image, bboxes_and_predictions, game, round_):
         
         Args:
             bbox_inside::[tuple]
-                Tuple with (col, row, width, height) describing the bounding box with coordinates relative
+                Tuple with (col, row, width, height) describing a bounding box with coordinates relative
                 to the inside of the card (inside of bbox_card). 
             bbox_card::[tuple]
                 Tuple with (col, row, width, height) describing the bounding box of the card containing 
