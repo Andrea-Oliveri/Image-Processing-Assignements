@@ -14,14 +14,13 @@ Your task is to ready yourself for the final evaluation. The day of the exam we 
 
 ### Install
 
-- tensorflow==1.15.0
-- numpy==1.19.5
-- opencv-python==4.5.1.48
+- tensorflow==2.1.0
+- numpy==1.19
+- opencv-python==4.5
 - pandas==1.2.4
-- scikit-image==0.18.1
 - scikit-learn==0.24.1
 - scipy==1.6.2
-- tqdm==4.60.0
+- matplotlib
 - jupyter
 
 ### Code
