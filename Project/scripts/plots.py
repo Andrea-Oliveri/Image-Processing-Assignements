@@ -30,6 +30,7 @@ def plot_history(history):
     plt.show()
     
     
+    
 def draw_and_plot_overlay(image, bboxes_and_predictions, game, round_):
     
     def draw_bbox(image, bbox, bbox_type, thickness = 30, bbox_title = ""):
@@ -40,14 +41,43 @@ def draw_and_plot_overlay(image, bboxes_and_predictions, game, round_):
         
         col, row, width, height = bbox
         
-        image = cv2.rectangle(image, (col - thickness, row - thickness), (col + width + thickness, row + height + thickness), color = color, thickness = thickness)
+        image = cv2.rectangle(image, \
+                              (col - thickness, row - thickness), \
+                              (col + width + thickness, row + height + thickness), \
+                              color = color, \
+                              thickness = thickness)
         
-        image = cv2.putText(image, bbox_title, (col - thickness, row - thickness - 60), cv2.FONT_HERSHEY_SIMPLEX, 5, color = color, thickness = 15)
+        image = cv2.putText(image, \
+                            bbox_title, \
+                            (col - thickness, row - thickness - 60), \
+                            cv2.FONT_HERSHEY_SIMPLEX, 
+                            fontScale = 5, \
+                            color = color, \
+                            thickness = 15)
 
         return image
     
     
     def map_bbox_inside_card(bbox_inside, bbox_card, player):
+        """
+        Function converting bbox_inside from the set of coordinates relative to the inside of the card
+        into the set of coordinates relative to the whole image.
+        
+        Args:
+            bbox_inside::[tuple]
+                Tuple with (col, row, width, height) describing the bounding box with coordinates relative
+                to the inside of the card (inside of bbox_card). 
+            bbox_card::[tuple]
+                Tuple with (col, row, width, height) describing the bounding box of the card containing 
+                bbox_inside with coordinates relative to the image.
+            player::[int]
+                Which player does bbox_card belong to.
+                
+        Returns:
+            bbox_transformed::[tuple]
+                Tuple with (col, row, width, height) describing the same region as bbox_inside inside bbox_card,
+                but relative to the image coordinates.
+        """
         col_inside, row_inside, width_inside, height_inside = bbox_inside
         col_card  , row_card  , width_card  , height_card   = bbox_card
         

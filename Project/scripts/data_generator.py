@@ -7,8 +7,8 @@ from .distortions import *
 
 class DataGenerator(tensorflow.keras.utils.Sequence):
 
-    def __init__(self, mnist_images, mnist_labels, figures_images, figures_labels, resolution, batch_size, augment_mnist_data = False, 
-                 augment_figure_data = False):
+    def __init__(self, mnist_images, mnist_labels, figures_images, figures_labels, resolution, batch_size, 
+                 augment_mnist_data = False, augment_figure_data = False):
         
         # Storing options parameters for later use.
         self.augment_mnist_data  = augment_mnist_data

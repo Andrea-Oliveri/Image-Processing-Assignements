@@ -283,9 +283,13 @@ class Extractor():
         # Merging close components that belong to same object, skipping background labeled 0.
         new_labels = {}
         for component1 in range(1, num_labels):
-            parameters1 = {"centroid": np.array(centroids[component1]), "width": stats[component1, cv2.CC_STAT_WIDTH], "height": stats[component1, cv2.CC_STAT_HEIGHT]}
+            parameters1 = {"centroid": np.array(centroids[component1]), 
+                           "width": stats[component1, cv2.CC_STAT_WIDTH], 
+                           "height": stats[component1, cv2.CC_STAT_HEIGHT]}
             for component2 in range(component1 + 1, num_labels):
-                parameters2 = {"centroid": np.array(centroids[component2]), "width": stats[component2, cv2.CC_STAT_WIDTH], "height": stats[component2, cv2.CC_STAT_HEIGHT]}
+                parameters2 = {"centroid": np.array(centroids[component2]), 
+                               "width": stats[component2, cv2.CC_STAT_WIDTH],
+                               "height": stats[component2, cv2.CC_STAT_HEIGHT]}
                 if self._detect_same_object(parameters1, parameters2):
                     new_labels[component2] = component1
 
