@@ -6,6 +6,18 @@ from scipy.spatial.distance import cdist
 
 
 def get_color_pixels(image, color):
+    """
+    Function returning a mask containing all pixels in image with a desired color.
+
+    Args:
+        image::[np.array]
+            Image we want to create the color mask of.
+        color::[str]
+            String containing either 'red' or 'black' or 'green' and describing which pixels we want to mask in the image. 
+    Returns:
+        mask::[np.array]
+            Binary mask containing 0 for pixels which do not match the desired color and 1 for those which match.
+    """
     image_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     
     if color == "black":
@@ -27,18 +39,55 @@ def get_color_pixels(image, color):
 
 
 class Extractor():
-    
-    def __init__(self, canny_thresholds = (25, 100), hough_circles_parameters = (50, 30), sigma_gaussian_blur = 5,
+    """
+    Class collecting all necessary steps to extract dealer, cards, figures and suits bounding boxes and cropped images
+    from the whole round input image.
+    """
+        
+    def __init__(self, hough_circles_parameters = (50, 30), canny_thresholds = (25, 100), sigma_gaussian_blur = 5,
                  smaller_card_side_range = (400, 700), larger_card_size_range = (600, 900), 
-                 nms_threshold = 0.3, tolerance = 0, min_size = 2000, median_filter_size = 7,
+                 nms_threshold = 0.3, same_component_tolerance = 0, min_size = 2000, median_filter_size = 7,
                  figure_suits_crop_margin = 70, min_distance_figure_component = 0.1, max_distance_figure_component = 0.5):
         """
-        tolerance::[float]
-            Tolerance in inequality check to decide whether components are close enough.
-        min_size::[int]
-                Minimum size in number of pixels of component to be considered a valid object.
-        """
+        Constructor of FiguresSuitsClassifier. Stores plently of parameters needed to be tuned to effectively extract the 
+        dealer, cards, figures and suits of interest from the input image.
         
+        Args:
+            hough_circles_parameters::[tuple]
+                Tuple containing (param1, param2) of cv2.HoughCircles.
+            canny_thresholds::[tuple]
+                Thresholds used by the Canny Edge Detector when isolating the cards from the rest of the image.
+            sigma_gaussian_blur::[float]
+                Standard deviation of the gaussian blur used on the output of the Canny Edge Detector 
+                when isolating the cards from the rest of the image. Needed to close the cards contours.
+            smaller_card_side_range::[tuple]
+                Tuple containing (min_smaller_size_length, max_smaller_size_length) describing the range of width or
+                height that a bounding box can have on its smaller size to be considered a card. 
+            larger_card_size_range::[tuple]
+                Tuple containing (min_larger_size_length, max_larger_size_length) describing the range of width or
+                height that a bounding box can have on its larger size to be considered a card. 
+            nms_threshold::[float]
+                Non-Maximum Suppression threshold to used when removing several bounding boxes for the same card.
+            same_component_tolerance::[float]
+                Tolerance in number of pixels in the inequality check to decide if components are close enough to
+                be merged into one component.
+            min_size::[int]
+                Min are in number of pixels that a component must span for it to be considered not noise.
+            median_filter_size::[int]
+                Size of the median filter used to remove imperfections from color mask generated when segmenting suits
+                and figures.
+            figure_suits_crop_margin::[int]
+                Number of additional pixels to include as margin when cropping a bounding box for the suit or figure from
+                the image.
+            min_distance_figure_component::[float]
+                Minumum distance that the centroid of a connected component must be at for it to be considered part of the
+                figure rather than part of the suit.
+            max_distance_figure_component::[float]
+                Maximum distance that the centroid of a connected component must be at for it to be considered part of the
+                figure rather than part of the suit.
+        Returns:
+            None
+        """        
         # Parameters used to extract dealer circle.
         self.hough_circles_parameters = hough_circles_parameters
         
@@ -50,7 +99,7 @@ class Extractor():
         self.nms_threshold = nms_threshold
         
         # Parameters used to extract figures and suits.
-        self.tolerance = tolerance
+        self.same_component_tolerance = same_component_tolerance
         self.min_size  = min_size
         self.median_filter_size = median_filter_size
         self.figure_suits_crop_margin = figure_suits_crop_margin
@@ -59,10 +108,40 @@ class Extractor():
         
         
     def __call__(self, image):
+        """
+        Special function simply calling self._extract.
+        Args:
+            image::[np.array]
+                See image parameter in _extract method.
+        Returns:
+            dealer_data::[dict]
+                See returned value in _extract method.
+            cards::[dict]
+                See returned value in _extract method.
+            figures_suits::[dict]
+                See returned value in _extract method.
+        """
         return self._extract(image) 
         
         
     def _extract(self, image):
+        """
+        Function extracting the dealer, the cards, the figures and suits from the image. Both cropped images and
+        bounding boxes are returned.
+        
+        Args:
+            image::[np.array]
+                Image we want to extract the dealer, the cards, the figures and suits from.
+        Returns:
+            dealer_data::[dict]
+                Dictionary containing the position and bounding box of the dealer circle and prediction for the 
+                dealer player.
+            cards::[dict]
+                Dictionary containing, for each player, the bounding box and cropped image of the his card.
+            figures_suits::[dict]
+                Dictionary containing, for each player, the bounding box, color and cropped image of the suits and
+                figure in his card.                
+        """
         dealer_data   = self._extract_dealer(image)
         cards         = self._extract_cards(image, dealer_data['circle'])
         figures_suits = self._extract_figures_suits(cards)
@@ -72,6 +151,18 @@ class Extractor():
         
         
     def _extract_dealer(self, image):
+        """
+        Function extracting the dealer from the image. The position and bounding box of the dealer circle as well
+        as prediction for the dealer player are returned.
+        
+        Args:
+            image::[np.array]
+                Image we want to extract the dealer from.
+        Returns:
+            dealer_data::[dict]
+                Dictionary containing the position and bounding box of the dealer circle and prediction for the 
+                dealer player.        
+        """
         green_mask  = get_color_pixels(image, "green")
 
         # Extract circle.
@@ -93,6 +184,16 @@ class Extractor():
         
     
     def _extract_cards(self, image, dealer_circle):
+        """
+        Function extracting the cards from the image. The bounding box and cropped image of the cards are returned.
+        
+        Args:
+            image::[np.array]
+                Image we want to extract the dealer from.
+        Returns:
+            cards::[dict]
+                Dictionary containing, for each player, the bounding box and cropped image of the his card.
+        """
         column, row, radius = dealer_circle
         
         gradient = cv2.Canny(image, *self.canny_thresholds) 
@@ -125,6 +226,17 @@ class Extractor():
     
     
     def _bbox_can_be_card(self, bbox):
+        """
+        Function returning a boolean describing if the bounding box passed as parameter has width and height compatible
+        with that of a card.
+        
+        Args:
+            bbox::[tuple]
+                Tuple with (col, row, width, height) describing the bounding box we want to test if it can be a card.
+        Returns:
+            can_be_card::[boolean]
+                Boolean describing if the bounding box passed as parameter has width and height compatible with that of a card.
+        """
         _, _, width, height = bbox
         
         width_in_smaller_range = self.smaller_card_side_range[0] <= width <= self.smaller_card_side_range[1]
@@ -136,7 +248,20 @@ class Extractor():
         return (width_in_smaller_range and height_in_larger_range) or (width_in_larger_range and height_in_smaller_range)    
     
     
-    def _associate_point_to_player(self, image, point):       
+    def _associate_point_to_player(self, image, point):
+        """
+        Function associating for any point in an image a player by computing the distance of the point from the middle of
+        each edge of the image.
+        
+        Args:
+            image::[np.array]
+                Image containing the point that we want to associate to a player.
+            point::[tuple]
+                Tuple of (row, col) containing the coordinates of the point we want to associate to a player.
+        Returns:
+            player::[int]
+                The player closest to the point to which the point got assigned. 
+        """
         image_rows, image_columns = image.shape[0], image.shape[1]
         point_row , point_column  = point
 
@@ -150,6 +275,19 @@ class Extractor():
     
     
     def _associate_bbox_to_player(self, image, bbox):
+        """
+        Function associating a bounding box in an image a player by computing the distance of the centroid of the box
+        from the middle of each edge of the image.
+        
+        Args:
+            image::[np.array]
+                Image containing the bounding box that we want to associate to a player.
+            bbox::[tuple]
+                Tuple with (col, row, width, height) describing the bounding box we want to associate to a player.
+        Returns:
+            player::[int]
+                The player closest to the bounding box center to which the bounding box got assigned. 
+        """
         column, row, width, height = bbox
         center_row    = row    + height / 2
         center_column = column + width  / 2
@@ -158,6 +296,18 @@ class Extractor():
     
     
     def _extract_figures_suits(self, cards):
+        """
+        Function extracting the figures and suits from the each player's card. Both cropped images and bounding boxes 
+        are returned, as well as the color of the suits and figure.
+        
+        Args:
+            cards::[dict]
+                Dictionary containing, for each player, the bounding box and cropped image of the his card.
+        Returns:
+            figures_suits::[dict]
+                Dictionary containing, for each player, the bounding box, color and cropped image of the suits and
+                figure in his card.                
+        """
         figures_suits = {}
         
         for player, card_data in cards.items():
@@ -228,6 +378,22 @@ class Extractor():
         
         
     def _crop_element_with_margins(self, image, row_range, col_range, margin):
+        """
+        Crops a region of the image described by row_range and col_range leaving a margin on each side.
+        
+        Args:
+            image::[np.array]
+                Image we want to crop the region of interest from.
+            row_range::[tuple]
+                Tuple containing (min_row, max_row) of the region of image we want to crop.
+            col_range::[tuple]
+                Tuple containing (min_col, max_col) of the region of image we want to crop.
+            margin::[int]
+                The number of pixels to leave around each side of the region of interest when cropping.
+        Returns:
+            cropped_image::[np.array]
+                Region of interest cropped with margins from image. 
+        """
         min_row, max_row = row_range
         min_col, max_col = col_range
 
@@ -262,7 +428,8 @@ class Extractor():
         radius_component1 = (component1["width"] + component1["height"]) / 4 
         radius_component2 = (component2["width"] + component2["height"]) / 4 
 
-        return distance <= radius_component1 + self.tolerance or distance <= radius_component2 + self.tolerance
+        return distance <= radius_component1 + self.same_component_tolerance or \
+               distance <= radius_component2 + self.same_component_tolerance
 
 
     def _get_objects_from_mask(self, mask):

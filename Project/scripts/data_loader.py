@@ -12,7 +12,7 @@ class DataLoader():
 
     
     def __getitem__(self, indices):
-        # indices must have form (n_game, n_round) and function returns both image and labels.
+        # Indices must have form (n_game, n_round) and function returns both image and labels.
 
         assert type(indices) in [tuple, list] and len(indices) == 2, \
                "__getitem__ expects a tuple of 2 indices of form (n_game, n_round)."
